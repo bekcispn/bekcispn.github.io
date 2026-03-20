@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Discord Sandık Seçim Sistemi</title>
+    <title>Sandıklı Seçim Sistemi</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -72,7 +72,6 @@
             justify-content: space-between;
         }
         .voter-name { display: flex; align-items: center; gap: 10px; font-weight: 500; }
-        .voter-choice { background: #1e293b; padding: 0.25rem 0.9rem; border-radius: 40px; font-size: 0.8rem; }
         .percentage-stats { display: flex; gap: 1.5rem; margin: 1rem 0; justify-content: center; }
         .stat { background: #0f172a80; padding: 0.4rem 1rem; border-radius: 40px; font-weight: 600; }
         .canvas-container { height: 280px; margin-top: 1rem; }
@@ -127,8 +126,8 @@
             padding: 0.2rem 0.6rem;
             border-radius: 20px;
         }
-        .durum-acik { background: #22c55e; color: #0f172a; }
-        .durum-kapali { background: #ef4444; }
+        .durum-aciklandi { background: #22c55e; color: #0f172a; }
+        .durum-bekliyor { background: #facc15; color: #0f172a; }
         .btn-sandik {
             background: #475569;
             border: none;
@@ -140,15 +139,17 @@
         }
         .btn-sandik:disabled { opacity: 0.5; cursor: not-allowed; }
         .uyari { color: #facc15; font-size: 0.8rem; margin-top: 0.5rem; }
+        .countdown { font-family: monospace; font-size: 1.1rem; background: #0f172a; padding: 0.2rem 0.6rem; border-radius: 20px; display: inline-block; }
         @media (max-width: 800px) { .dashboard { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
 <div class="container">
     <div class="header">
-        <h1><i class="fas fa-vote-yea"></i> Sandık Seçim Sistemi</h1>
+        <h1><i class="fas fa-vote-yea"></i> Sandıklı Seçim Sistemi</h1>
         <div id="userInfoArea" class="user-info">
             <i class="fab fa-discord"></i> <span id="userStatus">Giriş yapılmadı</span>
+            <span id="sandikNoDisplay" style="background:#475569; padding:0.2rem 0.6rem; border-radius:20px;"></span>
         </div>
     </div>
     <div id="mainContent"></div>
@@ -159,8 +160,8 @@
     const CLIENT_ID = "1484602452845006899";
     const REDIRECT_URI = encodeURIComponent("https://bekcispn.github.io/secim.html");  // KENDİ ADRESİNLE DEĞİŞTİR
 
-    // Adaylar
-    const CANDIDATES = { A: "Eyriks (HALKIN ADAMI)", B: "LW (YOLDAŞ)" };
+    // Adaylar (görünen isimler)
+    const CANDIDATES = { A: "EYRIKS", B: "LW" };
 
     // Sandık yapılandırması
     const SANDIKLAR = {
@@ -172,36 +173,73 @@
         6: ["951122732362399784", "999047005718446220", "1066152244845740042"],
         7: ["1080203490112057366", "1042045149468967012", "781607616140148756", "585891352454365204"]
     };
-    // Tüm izinli ID'ler (sandıkta olmayan yok)
     const ALLOWED_USER_IDS = Object.values(SANDIKLAR).flat();
+    const ADMIN_ID = "718497337684525146";   // bekcispn
 
-    // Admin ID (bekcispn)
-    const ADMIN_ID = "718497337684525146";
+    // ------------------- VERİ YÖNETİMİ (localStorage) -------------------
+    // allVotes: [{ userId, userName, choice, sandıkNo, timestamp }]
+    function getAllVotes() {
+        const stored = localStorage.getItem("allVotes");
+        return stored ? JSON.parse(stored) : [];
+    }
+    function saveAllVotes(votes) {
+        localStorage.setItem("allVotes", JSON.stringify(votes));
+    }
+    function addVote(userId, userName, choice, sandıkNo) {
+        let votes = getAllVotes();
+        if (votes.some(v => v.userId === userId)) return false;
+        votes.push({ userId, userName, choice, sandıkNo, timestamp: Date.now() });
+        saveAllVotes(votes);
+        return true;
+    }
+    function hasVoted(userId) {
+        return getAllVotes().some(v => v.userId === userId);
+    }
 
-    // Sandık durumları (localStorage)
-    function getSandikDurumlari() {
-        const stored = localStorage.getItem("sandikDurumlari");
-        if (stored) return JSON.parse(stored);
-        const defaultDurum = {};
-        for (let i = 1; i <= Object.keys(SANDIKLAR).length; i++) defaultDurum[i] = false; // hepsi kapalı başlasın
-        return defaultDurum;
+    // revealedSandıklar: hangi sandıkların oyları açıklandı
+    function getRevealedSandiklar() {
+        const stored = localStorage.getItem("revealedSandiklar");
+        return stored ? JSON.parse(stored) : [];
     }
-    function setSandikDurumlari(durum) {
-        localStorage.setItem("sandikDurumlari", JSON.stringify(durum));
+    function setRevealedSandiklar(revealed) {
+        localStorage.setItem("revealedSandiklar", JSON.stringify(revealed));
     }
-    function sandikAcikMi(sandikNo) {
-        const durum = getSandikDurumlari();
-        return durum[sandikNo] === true;
+    function isRevealed(sandikNo) {
+        return getRevealedSandiklar().includes(sandikNo);
     }
-    function sandigiAc(sandikNo) {
-        const durum = getSandikDurumlari();
-        durum[sandikNo] = true;
-        setSandikDurumlari(durum);
+    function revealSandik(sandikNo) {
+        let revealed = getRevealedSandiklar();
+        if (!revealed.includes(sandikNo)) {
+            revealed.push(sandikNo);
+            setRevealedSandiklar(revealed);
+        }
     }
-    function sandigiKapat(sandikNo) {
-        const durum = getSandikDurumlari();
-        durum[sandikNo] = false;
-        setSandikDurumlari(durum);
+
+    // countingStarted: sayım başladı mı?
+    function getCountingStarted() {
+        const stored = localStorage.getItem("countingStarted");
+        return stored === "true";
+    }
+    function setCountingStarted(started) {
+        localStorage.setItem("countingStarted", started);
+    }
+
+    // İstatistik (sadece açıklanmış sandıkların oyları)
+    function getRevealedStats() {
+        const allVotes = getAllVotes();
+        const revealed = getRevealedSandiklar();
+        const filtered = allVotes.filter(v => revealed.includes(v.sandıkNo));
+        const countA = filtered.filter(v => v.choice === "A").length;
+        const countB = filtered.filter(v => v.choice === "B").length;
+        const total = filtered.length;
+        const percentA = total === 0 ? 0 : (countA / total) * 100;
+        const percentB = total === 0 ? 0 : (countB / total) * 100;
+        return { total, countA, countB, percentA, percentB };
+    }
+
+    // Toplam oy sayısı (tüm sandıklar, açıklanmamış dahil)
+    function getTotalVotesCount() {
+        return getAllVotes().length;
     }
 
     // Kullanıcının sandığını bul
@@ -212,44 +250,10 @@
         return null;
     }
 
-    // Oy yönetimi (localStorage)
-    function getVotes() {
-        const stored = localStorage.getItem("votes");
-        if (stored) return JSON.parse(stored);
-        return [];
-    }
-    function saveVotes(votes) {
-        localStorage.setItem("votes", JSON.stringify(votes));
-    }
-    function addVote(userId, userName, choice) {
-        let votes = getVotes();
-        if (votes.some(v => v.userId === userId)) return false;
-        votes.push({ userId, userName, choice, timestamp: Date.now() });
-        saveVotes(votes);
-        return true;
-    }
-    function hasVoted(userId) {
-        return getVotes().some(v => v.userId === userId);
-    }
-    function getUserVote(userId) {
-        return getVotes().find(v => v.userId === userId);
-    }
-
-    // İstatistik
-    function computeStats() {
-        const votes = getVotes();
-        const countA = votes.filter(v => v.choice === "A").length;
-        const countB = votes.filter(v => v.choice === "B").length;
-        const total = votes.length;
-        const percentA = total === 0 ? 0 : (countA / total) * 100;
-        const percentB = total === 0 ? 0 : (countB / total) * 100;
-        return { total, countA, countB, percentA, percentB };
-    }
-
-    // Grafik ve liste render
+    // ------------------- GRAFİK VE LİSTE -------------------
     let chart = null;
     function renderChart() {
-        const stats = computeStats();
+        const stats = getRevealedStats();
         const ctx = document.getElementById('voteChart').getContext('2d');
         if (chart) chart.destroy();
         chart = new Chart(ctx, {
@@ -257,7 +261,7 @@
             data: {
                 labels: [CANDIDATES.A, CANDIDATES.B],
                 datasets: [{
-                    label: 'Oy Sayısı',
+                    label: 'Açıklanan Oy Sayısı',
                     data: [stats.countA, stats.countB],
                     backgroundColor: ['#f97316', '#c084fc'],
                     borderRadius: 10,
@@ -275,172 +279,175 @@
         });
         document.getElementById('percentA').innerText = stats.percentA.toFixed(1);
         document.getElementById('percentB').innerText = stats.percentB.toFixed(1);
-        document.getElementById('totalVotes').innerText = stats.total;
+        document.getElementById('totalRevealedVotes').innerText = stats.total;
     }
+
     function renderVoterList() {
-        const votes = getVotes();
+        const votes = getAllVotes();
         const container = document.getElementById('voterList');
         if (!container) return;
         if (votes.length === 0) {
             container.innerHTML = '<div style="text-align:center; padding:2rem;">Henüz oy yok</div>';
             return;
         }
+        // Sadece isimleri göster, hangi adayı seçtiğini gizle
         container.innerHTML = votes.map(v => `
             <div class="voter-item">
                 <div class="voter-name"><i class="fab fa-discord"></i> ${escapeHtml(v.userName)}</div>
-                <div class="voter-choice">${v.choice === 'A' ? CANDIDATES.A : CANDIDATES.B}</div>
+                <div><i class="fas fa-check-circle" style="color:#22c55e;"></i> Oy verdi</div>
             </div>
         `).join('');
     }
+
     function updateUI() {
         renderChart();
         renderVoterList();
+        // Admin paneli yenile (eğer adminse)
+        const currentUser = window.currentDiscordUser;
+        if (currentUser && currentUser.id === ADMIN_ID) renderAdminPanel(currentUser);
+        // Kullanıcının sandık numarasını üstte göster
+        if (currentUser) {
+            const sandikNo = getKullaniciSandik(currentUser.id);
+            document.getElementById('sandikNoDisplay').innerHTML = sandikNo ? `🏠 Sandık ${sandikNo}` : '';
+        }
     }
 
-    // Discord Auth
-    function getDiscordUser(callback) {
-        const hash = window.location.hash.substring(1);
-        const params = new URLSearchParams(hash);
-        const accessToken = params.get('access_token');
-        if (!accessToken) { callback(null); return; }
-        fetch('https://discord.com/api/users/@me', {
-            headers: { Authorization: `Bearer ${accessToken}` }
-        })
-        .then(res => res.json())
-        .then(user => { if (user.id) callback(user); else callback(null); })
-        .catch(() => callback(null));
-    }
-    function loginWithDiscord() {
-        const authUrl = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=token&scope=identify`;
-        window.location.href = authUrl;
-    }
-    function logout() {
-        window.location.href = window.location.pathname;
+    // ------------------- SAYIM ZAMANLAYICI -------------------
+    let revealTimer = null;
+    let currentRevealIndex = 1;
+
+    function stopRevealTimer() {
+        if (revealTimer) {
+            clearTimeout(revealTimer);
+            revealTimer = null;
+        }
     }
 
-    // Admin paneli (sandık yönetimi)
-    function renderAdminPanel() {
-        const durumlar = getSandikDurumlari();
-        let html = `<div class="sandik-panel"><h3><i class="fas fa-archive"></i> Sandık Yönetimi</h3>
+    function startRevealSequence() {
+        const sandikNos = Object.keys(SANDIKLAR).map(Number).sort((a,b)=>a-b);
+        let index = 0;
+        // Mevcut açıklanmış sandıkları bul
+        const revealed = getRevealedSandiklar();
+        // Kaldığımız yerden devam et
+        while (index < sandikNos.length && revealed.includes(sandikNos[index])) index++;
+        if (index >= sandikNos.length) return; // hepsi açıklanmış
+
+        function revealNext() {
+            if (index >= sandikNos.length) return;
+            const nextSandik = sandikNos[index];
+            revealSandik(nextSandik);
+            updateUI();
+            index++;
+            if (index < sandikNos.length) {
+                // 2 dakika sonra bir sonrakini açıkla
+                revealTimer = setTimeout(revealNext, 120000); // 2 dakika
+                // Geri sayım gösterimi
+                startCountdownDisplay(120);
+            } else {
+                revealTimer = null;
+                document.getElementById('countdownDisplay').innerHTML = '';
+            }
+        }
+        // İlk sandığı hemen açıkla
+        revealNext();
+    }
+
+    function startCountdownDisplay(secondsLeft) {
+        const countdownSpan = document.getElementById('countdownDisplay');
+        if (!countdownSpan) return;
+        const interval = setInterval(() => {
+            if (!countdownSpan) { clearInterval(interval); return; }
+            const mins = Math.floor(secondsLeft / 60);
+            const secs = secondsLeft % 60;
+            countdownSpan.innerHTML = `⏳ Sonraki sandık: ${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
+            if (secondsLeft <= 0) {
+                clearInterval(interval);
+                countdownSpan.innerHTML = '';
+            }
+            secondsLeft--;
+        }, 1000);
+    }
+
+    // ------------------- ADMIN PANELİ -------------------
+    function renderAdminPanel(user) {
+        const countingStarted = getCountingStarted();
+        const totalVotes = getTotalVotesCount();
+        const sandikNos = Object.keys(SANDIKLAR).map(Number).sort((a,b)=>a-b);
+        const revealed = getRevealedSandiklar();
+
+        let sandikHtml = `<div class="sandik-panel"><h3><i class="fas fa-archive"></i> Sandık Durumu</h3>
         <div class="sandik-grid">`;
-        for (let i = 1; i <= Object.keys(SANDIKLAR).length; i++) {
-            const uyeSayisi = SANDIKLAR[i].length;
-            const acik = durumlar[i];
-            const yeterli = uyeSayisi >= 15;
-            html += `
+        for (let no of sandikNos) {
+            const aciklandi = revealed.includes(no);
+            sandikHtml += `
                 <div class="sandik-item">
                     <div class="sandik-baslik">
-                        <span><i class="fas fa-box"></i> Sandık ${i}</span>
-                        <span class="sandik-durum ${acik ? 'durum-acik' : 'durum-kapali'}">${acik ? 'AÇIK' : 'KAPALI'}</span>
+                        <span><i class="fas fa-box"></i> Sandık ${no}</span>
+                        <span class="sandik-durum ${aciklandi ? 'durum-aciklandi' : 'durum-bekliyor'}">${aciklandi ? 'AÇIKLANDI' : 'BEKLİYOR'}</span>
                     </div>
-                    <div>👥 Üye sayısı: ${uyeSayisi}</div>
-                    <div class="uyari">${!yeterli && uyeSayisi < 15 ? '⚠️ 15+ üye olmadan açılamaz' : ''}</div>
-                    <button class="btn-sandik" data-sandik="${i}" data-durum="${acik}" ${!yeterli && !acik ? 'disabled' : ''}>
-                        ${acik ? 'KAPAT' : 'AÇ'}
-                    </button>
+                    <div>👥 Üye sayısı: ${SANDIKLAR[no].length}</div>
                 </div>
             `;
         }
-        html += `</div></div>`;
-        document.getElementById('adminPanel').innerHTML = html;
-        // buton olayları
-        document.querySelectorAll('.btn-sandik').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const sandik = parseInt(btn.dataset.sandik);
-                const suAnAcik = btn.dataset.durum === 'true';
-                if (suAnAcik) {
-                    sandigiKapat(sandik);
-                } else {
-                    const uyeSayisi = SANDIKLAR[sandik].length;
-                    if (uyeSayisi >= 15) {
-                        sandigiAc(sandik);
-                    } else {
-                        alert(`Sandık ${sandik} için en az 15 üye gerekli (şu an ${uyeSayisi})`);
-                        return;
-                    }
-                }
-                // sayfayı yenile (aynı kullanıcı ile)
-                const currentUser = window.currentDiscordUser;
-                if (currentUser) showVotingPanel(currentUser);
-            });
-        });
-    }
+        sandikHtml += `</div></div>`;
 
-    // Ana oy verme paneli
-    function showVotingPanel(user) {
-        window.currentDiscordUser = user;
-        const sandikNo = getKullaniciSandik(user.id);
-        if (!sandikNo) {
-            document.getElementById('mainContent').innerHTML = `<div class="login-panel"><h2>Hata</h2><p>Bu kullanıcı herhangi bir sandıkta bulunamadı.</p></div>`;
-            return;
-        }
-        const sandikAcik = sandikAcikMi(sandikNo);
-        const alreadyVoted = hasVoted(user.id);
-        const userVote = alreadyVoted ? getUserVote(user.id) : null;
-
-        let oyKullanmaHtml = '';
-        if (alreadyVoted) {
-            oyKullanmaHtml = `<div style="margin:1rem; background:#2d2f36; padding:0.5rem; border-radius:2rem;">✅ Oy kullandınız: ${userVote.choice === 'A' ? CANDIDATES.A : CANDIDATES.B} (değiştirilemez)</div>`;
-        } else if (!sandikAcik) {
-            oyKullanmaHtml = `<div style="margin:1rem; background:#ef4444; padding:0.5rem; border-radius:2rem;">🔒 Sandık ${sandikNo} henüz açılmadı. Oy kullanamazsınız.</div>`;
+        let startButtonHtml = '';
+        if (!countingStarted) {
+            if (totalVotes >= 15) {
+                startButtonHtml = `<button id="startCountingBtn" class="btn-discord" style="background:#10b981;"><i class="fas fa-play"></i> Sayımı Başlat (${totalVotes}/15 oy)</button>`;
+            } else {
+                startButtonHtml = `<button disabled class="btn-discord" style="background:#475569;"><i class="fas fa-ban"></i> Sayım Başlatmak için en az 15 oy gerekli (Şu an ${totalVotes})</button>`;
+            }
         } else {
-            oyKullanmaHtml = `
-                <div style="margin: 1rem 0;">
-                    <button id="voteA" class="btn-vote"><i class="fas fa-fire"></i> ${CANDIDATES.A}</button>
-                    <button id="voteB" class="btn-vote"><i class="fas fa-moon"></i> ${CANDIDATES.B}</button>
-                </div>
-            `;
+            startButtonHtml = `<div><i class="fas fa-chart-line"></i> Sayım başladı. Sandıklar sırayla açıklanıyor.</div>`;
         }
 
-        const html = `
-            <div class="dashboard">
-                <div class="voters-card">
-                    <div class="card-header">
-                        <h2><i class="fas fa-users"></i> Oy Verenler (<span id="totalVotes">0</span>)</h2>
-                    </div>
-                    <div id="voterList" class="voter-list"></div>
-                </div>
-                <div class="chart-card">
-                    <h3><i class="fas fa-chart-simple"></i> Anlık Oranlar</h3>
-                    <div class="percentage-stats">
-                        <div class="stat">${CANDIDATES.A}: <span id="percentA">0</span>%</div>
-                        <div class="stat">${CANDIDATES.B}: <span id="percentB">0</span>%</div>
-                    </div>
-                    <div class="canvas-container">
-                        <canvas id="voteChart"></canvas>
-                    </div>
-                </div>
-            </div>
-            <div class="login-panel">
-                <div><i class="fab fa-discord"></i> <strong>${escapeHtml(user.username)}#${user.discriminator}</strong> (Sandık ${sandikNo})</div>
-                ${oyKullanmaHtml}
-                <button onclick="logout()" class="btn-discord" style="background:#475569;"><i class="fas fa-sign-out-alt"></i> Çıkış Yap</button>
-            </div>
-            <div id="adminPanel" class="admin-panel" style="display: ${user.id === ADMIN_ID ? 'block' : 'none'};"></div>
+        const adminHtml = `
             <div class="admin-panel">
-                <button id="exportBtn" class="btn-discord" style="background:#3b82f6;"><i class="fas fa-download"></i> Yedek Al</button>
-                <button id="importBtn" class="btn-discord" style="background:#10b981;"><i class="fas fa-upload"></i> Yedek Yükle</button>
-                <button id="resetBtn" class="btn-discord" style="background:#ef4444;"><i class="fas fa-trash"></i> Tüm Oyları Sıfırla (Admin)</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+                    <h3><i class="fas fa-user-shield"></i> Admin Kontrolü</h3>
+                    <div id="countdownDisplay" class="countdown"></div>
+                </div>
+                ${startButtonHtml}
+                <div style="margin-top: 1rem;">
+                    <button id="exportBtn" class="btn-discord" style="background:#3b82f6;"><i class="fas fa-download"></i> Yedek Al</button>
+                    <button id="importBtn" class="btn-discord" style="background:#10b981;"><i class="fas fa-upload"></i> Yedek Yükle</button>
+                    <button id="resetBtn" class="btn-discord" style="background:#ef4444;"><i class="fas fa-trash"></i> Tüm Oyları Sıfırla</button>
+                </div>
+                ${sandikHtml}
             </div>
         `;
-        document.getElementById('mainContent').innerHTML = html;
-        updateUI();
+        document.getElementById('adminPanel').innerHTML = adminHtml;
 
-        if (!alreadyVoted && sandikAcik) {
-            document.getElementById('voteA')?.addEventListener('click', () => {
-                if (addVote(user.id, user.username, "A")) showVotingPanel(user);
-            });
-            document.getElementById('voteB')?.addEventListener('click', () => {
-                if (addVote(user.id, user.username, "B")) showVotingPanel(user);
+        // Olay bağlantıları
+        const startBtn = document.getElementById('startCountingBtn');
+        if (startBtn) {
+            startBtn.addEventListener('click', () => {
+                if (getCountingStarted()) return;
+                const totalVotesNow = getTotalVotesCount();
+                if (totalVotesNow >= 15) {
+                    setCountingStarted(true);
+                    // Temizle timer
+                    stopRevealTimer();
+                    // Açıklanmış sandıkları sıfırla (baştan başlat)
+                    setRevealedSandiklar([]);
+                    // Başlat sıralı açıklama
+                    startRevealSequence();
+                    // Admin panelini yenile
+                    renderAdminPanel(user);
+                    updateUI();
+                } else {
+                    alert(`Yetersiz oy! Şu an ${totalVotesNow} oy var, en az 15 gerekli.`);
+                }
             });
         }
 
-        // admin paneli render et (eğer adminse)
-        if (user.id === ADMIN_ID) renderAdminPanel();
-
-        // yedekleme vb.
         document.getElementById('exportBtn')?.addEventListener('click', () => {
-            const data = { votes: getVotes(), sandikDurumlari: getSandikDurumlari() };
+            const data = {
+                allVotes: getAllVotes(),
+                revealedSandiklar: getRevealedSandiklar(),
+                countingStarted: getCountingStarted()
+            };
             const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -459,9 +466,16 @@
                 reader.onload = ev => {
                     try {
                         const imported = JSON.parse(ev.target.result);
-                        if (imported.votes && Array.isArray(imported.votes)) saveVotes(imported.votes);
-                        if (imported.sandikDurumlari) setSandikDurumlari(imported.sandikDurumlari);
-                        showVotingPanel(user);
+                        if (imported.allVotes && Array.isArray(imported.allVotes)) saveAllVotes(imported.allVotes);
+                        if (imported.revealedSandiklar) setRevealedSandiklar(imported.revealedSandiklar);
+                        if (typeof imported.countingStarted === 'boolean') setCountingStarted(imported.countingStarted);
+                        // Timer'ı yeniden başlat
+                        if (getCountingStarted()) {
+                            stopRevealTimer();
+                            startRevealSequence();
+                        }
+                        updateUI();
+                        if (user && user.id === ADMIN_ID) renderAdminPanel(user);
                         alert("Yedek başarıyla yüklendi!");
                     } catch { alert("Geçersiz dosya formatı"); }
                 };
@@ -470,13 +484,91 @@
             input.click();
         });
         document.getElementById('resetBtn')?.addEventListener('click', () => {
-            if (confirm("TÜM OYLAR SİLİNECEK! Emin misiniz?")) {
-                saveVotes([]);
-                showVotingPanel(user);
+            if (confirm("TÜM OYLAR ve SAYIM DURUMU SİLİNECEK! Emin misiniz?")) {
+                saveAllVotes([]);
+                setRevealedSandiklar([]);
+                setCountingStarted(false);
+                stopRevealTimer();
+                updateUI();
+                if (user && user.id === ADMIN_ID) renderAdminPanel(user);
+                alert("Tüm veriler sıfırlandı.");
             }
         });
     }
 
+    // ------------------- OY KULLANMA PANELİ -------------------
+    function showVotingPanel(user) {
+        window.currentDiscordUser = user;
+        const sandikNo = getKullaniciSandik(user.id);
+        if (!sandikNo) {
+            document.getElementById('mainContent').innerHTML = `<div class="login-panel"><h2>Hata</h2><p>Bu kullanıcı herhangi bir sandıkta bulunamadı.</p></div>`;
+            return;
+        }
+        const countingStarted = getCountingStarted();
+        const alreadyVoted = hasVoted(user.id);
+        const canVote = !countingStarted && !alreadyVoted;
+
+        let oyKullanmaHtml = '';
+        if (alreadyVoted) {
+            oyKullanmaHtml = `<div style="margin:1rem; background:#2d2f36; padding:0.5rem; border-radius:2rem;">✅ Oy kullandınız (sonuçlar sayım başlayınca açıklanacak).</div>`;
+        } else if (countingStarted) {
+            oyKullanmaHtml = `<div style="margin:1rem; background:#ef4444; padding:0.5rem; border-radius:2rem;">🔒 Sayım başladı, artık oy kullanamazsınız.</div>`;
+        } else {
+            oyKullanmaHtml = `
+                <div style="margin: 1rem 0;">
+                    <button id="voteA" class="btn-vote"><i class="fas fa-fire"></i> ${CANDIDATES.A}</button>
+                    <button id="voteB" class="btn-vote"><i class="fas fa-moon"></i> ${CANDIDATES.B}</button>
+                </div>
+            `;
+        }
+
+        const html = `
+            <div class="dashboard">
+                <div class="voters-card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-users"></i> Oy Verenler (gizli)</h2>
+                    </div>
+                    <div id="voterList" class="voter-list"></div>
+                </div>
+                <div class="chart-card">
+                    <h3><i class="fas fa-chart-simple"></i> Açıklanan Sonuçlar</h3>
+                    <div class="percentage-stats">
+                        <div class="stat">${CANDIDATES.A}: <span id="percentA">0</span>%</div>
+                        <div class="stat">${CANDIDATES.B}: <span id="percentB">0</span>%</div>
+                    </div>
+                    <div class="canvas-container">
+                        <canvas id="voteChart"></canvas>
+                    </div>
+                    <div style="text-align:center; margin-top:0.5rem;">Açıklanan oy: <span id="totalRevealedVotes">0</span></div>
+                </div>
+            </div>
+            <div class="login-panel">
+                <div><i class="fab fa-discord"></i> <strong>${escapeHtml(user.username)}#${user.discriminator}</strong> (Sandık ${sandikNo})</div>
+                ${oyKullanmaHtml}
+                <button onclick="logout()" class="btn-discord" style="background:#475569;"><i class="fas fa-sign-out-alt"></i> Çıkış Yap</button>
+            </div>
+            <div id="adminPanel" class="admin-panel" style="display: ${user.id === ADMIN_ID ? 'block' : 'none'};"></div>
+        `;
+        document.getElementById('mainContent').innerHTML = html;
+        updateUI();
+
+        if (canVote) {
+            document.getElementById('voteA')?.addEventListener('click', () => {
+                if (addVote(user.id, user.username, "A", sandikNo)) {
+                    showVotingPanel(user);
+                }
+            });
+            document.getElementById('voteB')?.addEventListener('click', () => {
+                if (addVote(user.id, user.username, "B", sandikNo)) {
+                    showVotingPanel(user);
+                }
+            });
+        }
+
+        if (user.id === ADMIN_ID) renderAdminPanel(user);
+    }
+
+    // ------------------- GİRİŞ EKRANI -------------------
     function showLoginScreen() {
         document.getElementById('mainContent').innerHTML = `
             <div class="login-panel">
@@ -495,6 +587,27 @@
                 <button onclick="logout()" class="btn-discord">Tekrar Dene</button>
             </div>
         `;
+    }
+
+    // ------------------- AUTH -------------------
+    function getDiscordUser(callback) {
+        const hash = window.location.hash.substring(1);
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get('access_token');
+        if (!accessToken) { callback(null); return; }
+        fetch('https://discord.com/api/users/@me', {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        })
+        .then(res => res.json())
+        .then(user => { if (user.id) callback(user); else callback(null); })
+        .catch(() => callback(null));
+    }
+    function loginWithDiscord() {
+        const authUrl = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=token&scope=identify`;
+        window.location.href = authUrl;
+    }
+    function logout() {
+        window.location.href = window.location.pathname;
     }
 
     function init() {
