@@ -89,7 +89,6 @@
             gap: 8px;
         }
         .btn-vote {
-            background: linear-gradient(105deg, #3b82f6, #8b5cf6);
             border: none;
             padding: 0.6rem 1.5rem;
             border-radius: 2rem;
@@ -97,6 +96,8 @@
             cursor: pointer;
             margin: 0.5rem;
         }
+        .btn-vote-A { background: #ef4444; color: white; }
+        .btn-vote-B { background: #1e3a8a; color: white; }
         .admin-panel, .sandik-panel {
             margin-top: 1rem;
             background: rgba(0,0,0,0.3);
@@ -177,7 +178,6 @@
     const ADMIN_ID = "718497337684525146";   // bekcispn
 
     // ------------------- VERİ YÖNETİMİ (localStorage) -------------------
-    // allVotes: [{ userId, userName, choice, sandıkNo, timestamp }]
     function getAllVotes() {
         const stored = localStorage.getItem("allVotes");
         return stored ? JSON.parse(stored) : [];
@@ -263,7 +263,7 @@
                 datasets: [{
                     label: 'Açıklanan Oy Sayısı',
                     data: [stats.countA, stats.countB],
-                    backgroundColor: ['#f97316', '#c084fc'],
+                    backgroundColor: ['#ef4444', '#1e3a8a'],
                     borderRadius: 10,
                 }]
             },
@@ -290,7 +290,6 @@
             container.innerHTML = '<div style="text-align:center; padding:2rem;">Henüz oy yok</div>';
             return;
         }
-        // Sadece isimleri göster, hangi adayı seçtiğini gizle
         container.innerHTML = votes.map(v => `
             <div class="voter-item">
                 <div class="voter-name"><i class="fab fa-discord"></i> ${escapeHtml(v.userName)}</div>
@@ -302,10 +301,8 @@
     function updateUI() {
         renderChart();
         renderVoterList();
-        // Admin paneli yenile (eğer adminse)
         const currentUser = window.currentDiscordUser;
         if (currentUser && currentUser.id === ADMIN_ID) renderAdminPanel(currentUser);
-        // Kullanıcının sandık numarasını üstte göster
         if (currentUser) {
             const sandikNo = getKullaniciSandik(currentUser.id);
             document.getElementById('sandikNoDisplay').innerHTML = sandikNo ? `🏠 Sandık ${sandikNo}` : '';
@@ -314,24 +311,18 @@
 
     // ------------------- SAYIM ZAMANLAYICI -------------------
     let revealTimer = null;
-    let currentRevealIndex = 1;
-
     function stopRevealTimer() {
         if (revealTimer) {
             clearTimeout(revealTimer);
             revealTimer = null;
         }
     }
-
     function startRevealSequence() {
         const sandikNos = Object.keys(SANDIKLAR).map(Number).sort((a,b)=>a-b);
         let index = 0;
-        // Mevcut açıklanmış sandıkları bul
         const revealed = getRevealedSandiklar();
-        // Kaldığımız yerden devam et
         while (index < sandikNos.length && revealed.includes(sandikNos[index])) index++;
-        if (index >= sandikNos.length) return; // hepsi açıklanmış
-
+        if (index >= sandikNos.length) return;
         function revealNext() {
             if (index >= sandikNos.length) return;
             const nextSandik = sandikNos[index];
@@ -339,19 +330,15 @@
             updateUI();
             index++;
             if (index < sandikNos.length) {
-                // 2 dakika sonra bir sonrakini açıkla
-                revealTimer = setTimeout(revealNext, 120000); // 2 dakika
-                // Geri sayım gösterimi
+                revealTimer = setTimeout(revealNext, 120000);
                 startCountdownDisplay(120);
             } else {
                 revealTimer = null;
                 document.getElementById('countdownDisplay').innerHTML = '';
             }
         }
-        // İlk sandığı hemen açıkla
         revealNext();
     }
-
     function startCountdownDisplay(secondsLeft) {
         const countdownSpan = document.getElementById('countdownDisplay');
         if (!countdownSpan) return;
@@ -360,10 +347,7 @@
             const mins = Math.floor(secondsLeft / 60);
             const secs = secondsLeft % 60;
             countdownSpan.innerHTML = `⏳ Sonraki sandık: ${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')}`;
-            if (secondsLeft <= 0) {
-                clearInterval(interval);
-                countdownSpan.innerHTML = '';
-            }
+            if (secondsLeft <= 0) clearInterval(interval);
             secondsLeft--;
         }, 1000);
     }
@@ -375,8 +359,7 @@
         const sandikNos = Object.keys(SANDIKLAR).map(Number).sort((a,b)=>a-b);
         const revealed = getRevealedSandiklar();
 
-        let sandikHtml = `<div class="sandik-panel"><h3><i class="fas fa-archive"></i> Sandık Durumu</h3>
-        <div class="sandik-grid">`;
+        let sandikHtml = `<div class="sandik-panel"><h3><i class="fas fa-archive"></i> Sandık Durumu</h3><div class="sandik-grid">`;
         for (let no of sandikNos) {
             const aciklandi = revealed.includes(no);
             sandikHtml += `
@@ -412,36 +395,26 @@
                 <div style="margin-top: 1rem;">
                     <button id="exportBtn" class="btn-discord" style="background:#3b82f6;"><i class="fas fa-download"></i> Yedek Al</button>
                     <button id="importBtn" class="btn-discord" style="background:#10b981;"><i class="fas fa-upload"></i> Yedek Yükle</button>
-                    <button id="resetBtn" class="btn-discord" style="background:#ef4444;"><i class="fas fa-trash"></i> Tüm Oyları Sıfırla</button>
                 </div>
                 ${sandikHtml}
             </div>
         `;
         document.getElementById('adminPanel').innerHTML = adminHtml;
 
-        // Olay bağlantıları
-        const startBtn = document.getElementById('startCountingBtn');
-        if (startBtn) {
-            startBtn.addEventListener('click', () => {
-                if (getCountingStarted()) return;
-                const totalVotesNow = getTotalVotesCount();
-                if (totalVotesNow >= 15) {
-                    setCountingStarted(true);
-                    // Temizle timer
-                    stopRevealTimer();
-                    // Açıklanmış sandıkları sıfırla (baştan başlat)
-                    setRevealedSandiklar([]);
-                    // Başlat sıralı açıklama
-                    startRevealSequence();
-                    // Admin panelini yenile
-                    renderAdminPanel(user);
-                    updateUI();
-                } else {
-                    alert(`Yetersiz oy! Şu an ${totalVotesNow} oy var, en az 15 gerekli.`);
-                }
-            });
-        }
-
+        document.getElementById('startCountingBtn')?.addEventListener('click', () => {
+            if (getCountingStarted()) return;
+            const totalVotesNow = getTotalVotesCount();
+            if (totalVotesNow >= 15) {
+                setCountingStarted(true);
+                stopRevealTimer();
+                setRevealedSandiklar([]);
+                startRevealSequence();
+                renderAdminPanel(user);
+                updateUI();
+            } else {
+                alert(`Yetersiz oy! Şu an ${totalVotesNow} oy var, en az 15 gerekli.`);
+            }
+        });
         document.getElementById('exportBtn')?.addEventListener('click', () => {
             const data = {
                 allVotes: getAllVotes(),
@@ -469,7 +442,6 @@
                         if (imported.allVotes && Array.isArray(imported.allVotes)) saveAllVotes(imported.allVotes);
                         if (imported.revealedSandiklar) setRevealedSandiklar(imported.revealedSandiklar);
                         if (typeof imported.countingStarted === 'boolean') setCountingStarted(imported.countingStarted);
-                        // Timer'ı yeniden başlat
                         if (getCountingStarted()) {
                             stopRevealTimer();
                             startRevealSequence();
@@ -482,17 +454,6 @@
                 reader.readAsText(file);
             };
             input.click();
-        });
-        document.getElementById('resetBtn')?.addEventListener('click', () => {
-            if (confirm("TÜM OYLAR ve SAYIM DURUMU SİLİNECEK! Emin misiniz?")) {
-                saveAllVotes([]);
-                setRevealedSandiklar([]);
-                setCountingStarted(false);
-                stopRevealTimer();
-                updateUI();
-                if (user && user.id === ADMIN_ID) renderAdminPanel(user);
-                alert("Tüm veriler sıfırlandı.");
-            }
         });
     }
 
@@ -516,8 +477,8 @@
         } else {
             oyKullanmaHtml = `
                 <div style="margin: 1rem 0;">
-                    <button id="voteA" class="btn-vote"><i class="fas fa-fire"></i> ${CANDIDATES.A}</button>
-                    <button id="voteB" class="btn-vote"><i class="fas fa-moon"></i> ${CANDIDATES.B}</button>
+                    <button id="voteA" class="btn-vote btn-vote-A"><i class="fas fa-fire"></i> ${CANDIDATES.A}</button>
+                    <button id="voteB" class="btn-vote btn-vote-B"><i class="fas fa-moon"></i> ${CANDIDATES.B}</button>
                 </div>
             `;
         }
@@ -554,17 +515,12 @@
 
         if (canVote) {
             document.getElementById('voteA')?.addEventListener('click', () => {
-                if (addVote(user.id, user.username, "A", sandikNo)) {
-                    showVotingPanel(user);
-                }
+                if (addVote(user.id, user.username, "A", sandikNo)) showVotingPanel(user);
             });
             document.getElementById('voteB')?.addEventListener('click', () => {
-                if (addVote(user.id, user.username, "B", sandikNo)) {
-                    showVotingPanel(user);
-                }
+                if (addVote(user.id, user.username, "B", sandikNo)) showVotingPanel(user);
             });
         }
-
         if (user.id === ADMIN_ID) renderAdminPanel(user);
     }
 
