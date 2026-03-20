@@ -131,7 +131,6 @@
         .durum-bekliyor { background: #facc15; color: #0f172a; }
         .countdown { font-family: monospace; font-size: 1.1rem; background: #0f172a; padding: 0.2rem 0.6rem; border-radius: 20px; display: inline-block; }
         .btn-danger { background: #dc2626; }
-        .btn-warning { background: #f59e0b; }
         @media (max-width: 800px) { .dashboard { grid-template-columns: 1fr; } }
     </style>
 </head>
@@ -164,7 +163,7 @@
         7: ["1080203490112057366", "1042045149468967012", "781607616140148756", "585891352454365204"]
     };
     const ALLOWED_USER_IDS = Object.values(SANDIKLAR).flat();
-    const ADMIN_ID = "718497337684525146";   // bekcispn
+    const ADMIN_ID = "1390253020926972034";   // bekcispn'in doğru ID'si
 
     // ------------------- VERİ YÖNETİMİ -------------------
     function getAllVotes() {
@@ -378,7 +377,7 @@
                     <div style="margin-top: 1rem; padding: 0.8rem; background: #1e293b; border-radius: 1rem;">
                         <strong>Kendi Oyunuz:</strong> ${myVote.choice === 'A' ? CANDIDATES.A : CANDIDATES.B} için oy verdiniz.
                         <div style="margin-top: 0.5rem;">
-                            <button id="deleteMyVoteBtn" class="btn-discord btn-danger" style="background:#dc2626;"><i class="fas fa-trash"></i> Oyumu Sil</button>
+                            <button id="deleteMyVoteBtn" class="btn-discord" style="background:#dc2626;"><i class="fas fa-trash"></i> Oyumu Sil</button>
                             <button id="changeMyVoteToA" class="btn-vote btn-vote-A" style="padding:0.4rem 1rem;">${CANDIDATES.A} ile Değiştir</button>
                             <button id="changeMyVoteToB" class="btn-vote btn-vote-B" style="padding:0.4rem 1rem;">${CANDIDATES.B} ile Değiştir</button>
                         </div>
