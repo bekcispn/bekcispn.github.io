@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Discord Sunucu Seçim Sistemi | OAuth ile Güvenli Oy</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,600;14..32,700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            padding: 2rem 1.5rem;
+            color: #f1f5f9;
+        }
+        .container {
+            max-width: 1300px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #c084fc, #60a5fa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        .user-info {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(8px);
+            border-radius: 60px;
+            padding: 0.5rem 1.2rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 1rem;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 1.8rem;
+            margin-bottom: 2rem;
+        }
+        .voters-card {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(12px);
+            border-radius: 2rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            overflow: hidden;
+        }
+        .card-header {
+            background: rgba(0,0,0,0.3);
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+        .voter-list {
+            max-height: 480px;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }
+        .voter-item {
+            background: rgba(255,255,255,0.05);
+            margin: 0.6rem 0.8rem;
+            padding: 0.75rem 1rem;
+            border-radius: 1.2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .voter-name {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 500;
+        }
+        .voter-choice {
+            background: #1e293b;
+            padding: 0.25rem 0.9rem;
+            border-radius: 40px;
+            font-size: 0.8rem;
+        }
+        .chart-card {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(12px);
+            border-radius: 2rem;
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 1.5rem;
+        }
+        .percentage-stats {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 1rem;
+            justify-content: center;
+        }
+        .stat {
+            background: #0f172a80;
+            padding: 0.4rem 1rem;
+            border-radius: 40px;
+            font-weight: 600;
+        }
+        .canvas-container {
+            height: 280px;
+            margin-top: 1rem;
+        }
+        .login-panel {
+            text-align: center;
+            background: rgba(15,23,42,0.6);
+            border-radius: 2rem;
+            padding: 2rem;
+            margin-top: 2rem;
+        }
+        .btn-discord {
+            background: #5865F2;
+            border: none;
+            padding: 0.8rem 2rem;
+            border-radius: 40px;
+            font-weight: bold;
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .btn-vote {
+            background: linear-gradient(105deg, #3b82f6, #8b5cf6);
+            border: none;
+            padding: 0.6rem 1.5rem;
+            border-radius: 2rem;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 0.5rem;
+        }
+        .admin-panel {
+            margin-top: 1rem;
+            background: rgba(0,0,0,0.3);
+            border-radius: 1rem;
+            padding: 0.8rem;
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        button { font-family: inherit; }
+        @media (max-width: 800px) {
+            .dashboard { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1><i class="fas fa-vote-yea"></i> Sunucu Seçim Sistemi</h1>
+        <div id="userInfoArea" class="user-info">
+            <i class="fab fa-discord"></i> <span id="userStatus">Giriş yapılmadı</span>
+        </div>
+    </div>
+    <div id="mainContent"></div>
+</div>
+
+<script>
+    // ------------------- KONFIGURASYON -------------------
+    const CLIENT_ID = "1484602452845006899";           // Discord Developer'dan al
+    const REDIRECT_URI = encodeURIComponent("https://bekcispn.github.io/secim/");  // Örn: https://seninismin.github.io/secim/
+
+    // --- İZİN VERİLEN KULLANICI ID'LERİ (SUNUCU ÜYELERİ) ---
+    const ALLOWED_USER_IDS = [
+        "718497337684525146",
+        "999047005718446220",
+        "1181989342634319915",
+        "325911292676276226",
+        "852876832549634048",
+        "1390253020926972034",
+        "1080203490112057366",
+        "1269727968700137585",
+        "951122732362399784",
+        "1396622278892196004",
+        "781607616140148756",
+        "913861573855035412",
+        "1042045149468967012",
+        "1448626057853931580",
+        "1394143234275672196",
+        "324111665912217600",
+        "622842615137697803",
+        "822896323912925205",
+        "1066152244845740042",
+        "715278617927483432",
+        "1459959385244700716",
+        "1394737118613602364",
+        "683357108766507020",
+        "1248992367780827208",
+        "585891352454365204",
+        "926104943813873715"
+    ];
+
+    const CANDIDATES = { A: "Aday A", B: "Aday B" };
+
+    // ------------------- VOTE YÖNETİMİ (localStorage) -------------------
+    function getVotes() {
+        const stored = localStorage.getItem("votes");
+        if (stored) return JSON.parse(stored);
+        return [];
+    }
+
+    function saveVotes(votes) {
+        localStorage.setItem("votes", JSON.stringify(votes));
+    }
+
+    function addVote(userId, userName, choice) {
+        let votes = getVotes();
+        if (votes.some(v => v.userId === userId)) return false;
+        votes.push({ userId, userName, choice });
+        saveVotes(votes);
+        return true;
+    }
+
+    function hasVoted(userId) {
+        return getVotes().some(v => v.userId === userId);
+    }
+
+    function getUserVote(userId) {
+        return getVotes().find(v => v.userId === userId);
+    }
+
+    // ------------------- İSTATİSTİK -------------------
+    function computeStats() {
+        const votes = getVotes();
+        const countA = votes.filter(v => v.choice === "A").length;
+        const countB = votes.filter(v => v.choice === "B").length;
+        const total = votes.length;
+        const percentA = total === 0 ? 0 : (countA / total) * 100;
+        const percentB = total === 0 ? 0 : (countB / total) * 100;
+        return { total, countA, countB, percentA, percentB };
+    }
+
+    // ------------------- RENDER -------------------
+    let chart = null;
+    function renderChart() {
+        const stats = computeStats();
+        const ctx = document.getElementById('voteChart').getContext('2d');
+        if (chart) chart.destroy();
+        chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: [CANDIDATES.A, CANDIDATES.B],
+                datasets: [{
+                    label: 'Oy Sayısı',
+                    data: [stats.countA, stats.countB],
+                    backgroundColor: ['#f97316', '#c084fc'],
+                    borderRadius: 10,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: { labels: { color: '#e2e8f0' } }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { stepSize: 1, color: '#cbd5e6' } },
+                    x: { ticks: { color: '#f1f5f9' } }
+                }
+            }
+        });
+        document.getElementById('percentA').innerText = stats.percentA.toFixed(1);
+        document.getElementById('percentB').innerText = stats.percentB.toFixed(1);
+        document.getElementById('totalVotes').innerText = stats.total;
+    }
+
+    function renderVoterList() {
+        const votes = getVotes();
+        const container = document.getElementById('voterList');
+        if (!container) return;
+        if (votes.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding:2rem;">Henüz oy yok</div>';
+            return;
+        }
+        container.innerHTML = votes.map(v => `
+            <div class="voter-item">
+                <div class="voter-name"><i class="fab fa-discord"></i> ${escapeHtml(v.userName)}</div>
+                <div class="voter-choice">Aday ${v.choice}</div>
+            </div>
+        `).join('');
+    }
+
+    function updateUI() {
+        renderChart();
+        renderVoterList();
+    }
+
+    // ------------------- DISCORD AUTH -------------------
+    function getDiscordUser(callback) {
+        const hash = window.location.hash.substring(1);
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get('access_token');
+        if (!accessToken) {
+            callback(null);
+            return;
+        }
+        fetch('https://discord.com/api/users/@me', {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        })
+        .then(res => res.json())
+        .then(user => {
+            if (user.id) callback(user);
+            else callback(null);
+        })
+        .catch(() => callback(null));
+    }
+
+    function loginWithDiscord() {
+        const authUrl = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=token&scope=identify`;
+        window.location.href = authUrl;
+    }
+
+    function logout() {
+        window.location.href = window.location.pathname;
+    }
+
+    // ------------------- OY KULLANMA ARAYÜZÜ -------------------
+    function showVotingPanel(user) {
+        const alreadyVoted = hasVoted(user.id);
+        const userVote = alreadyVoted ? getUserVote(user.id) : null;
+
+        const html = `
+            <div class="dashboard">
+                <div class="voters-card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-users"></i> Oy Verenler (<span id="totalVotes">0</span>)</h2>
+                    </div>
+                    <div id="voterList" class="voter-list"></div>
+                </div>
+                <div class="chart-card">
+                    <h3><i class="fas fa-chart-simple"></i> Anlık Oranlar</h3>
+                    <div class="percentage-stats">
+                        <div class="stat">${CANDIDATES.A}: <span id="percentA">0</span>%</div>
+                        <div class="stat">${CANDIDATES.B}: <span id="percentB">0</span>%</div>
+                    </div>
+                    <div class="canvas-container">
+                        <canvas id="voteChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="login-panel">
+                <div><i class="fab fa-discord"></i> <strong>${escapeHtml(user.username)}#${user.discriminator}</strong> olarak giriş yaptınız.</div>
+                ${!alreadyVoted ? `
+                    <div style="margin: 1rem 0;">
+                        <button id="voteA" class="btn-vote"><i class="fas fa-fire"></i> ${CANDIDATES.A}</button>
+                        <button id="voteB" class="btn-vote"><i class="fas fa-moon"></i> ${CANDIDATES.B}</button>
+                    </div>
+                ` : `
+                    <div style="margin: 1rem 0; background:#2d2f36; padding:0.5rem; border-radius:2rem;">
+                        <i class="fas fa-check-circle"></i> Oy kullandınız: <strong>Aday ${userVote.choice}</strong> (değiştirilemez)
+                    </div>
+                `}
+                <button onclick="logout()" class="btn-discord" style="background:#475569;"><i class="fas fa-sign-out-alt"></i> Çıkış Yap</button>
+            </div>
+            <div class="admin-panel">
+                <button id="exportBtn" class="btn-discord" style="background:#3b82f6;"><i class="fas fa-download"></i> Yedek Al</button>
+                <button id="importBtn" class="btn-discord" style="background:#10b981;"><i class="fas fa-upload"></i> Yedek Yükle</button>
+                <button id="resetBtn" class="btn-discord" style="background:#ef4444;"><i class="fas fa-trash"></i> Tüm Oyları Sıfırla (Admin)</button>
+            </div>
+        `;
+        document.getElementById('mainContent').innerHTML = html;
+        updateUI();
+
+        if (!alreadyVoted) {
+            document.getElementById('voteA')?.addEventListener('click', () => {
+                if (addVote(user.id, user.username, "A")) {
+                    showVotingPanel(user);
+                }
+            });
+            document.getElementById('voteB')?.addEventListener('click', () => {
+                if (addVote(user.id, user.username, "B")) {
+                    showVotingPanel(user);
+                }
+            });
+        }
+
+        document.getElementById('exportBtn')?.addEventListener('click', () => {
+            const data = getVotes();
+            const blob = new Blob([JSON.stringify(data, null, 2)], {type: "application/json"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `secim_yedek_${new Date().toISOString()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+        document.getElementById('importBtn')?.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'application/json';
+            input.onchange = e => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    try {
+                        const imported = JSON.parse(ev.target.result);
+                        if (Array.isArray(imported)) {
+                            saveVotes(imported);
+                            showVotingPanel(user);
+                            alert("Yedek başarıyla yüklendi!");
+                        } else throw new Error();
+                    } catch {
+                        alert("Geçersiz dosya formatı");
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        });
+        document.getElementById('resetBtn')?.addEventListener('click', () => {
+            if (confirm("TÜM OYLAR SİLİNECEK! Emin misiniz?")) {
+                saveVotes([]);
+                showVotingPanel(user);
+            }
+        });
+    }
+
+    function showLoginScreen() {
+        document.getElementById('mainContent').innerHTML = `
+            <div class="login-panel">
+                <h2><i class="fab fa-discord"></i> Discord ile Giriş Yap</h2>
+                <p style="margin: 1rem 0;">Sadece sunucu üyeleri oy kullanabilir.</p>
+                <button onclick="loginWithDiscord()" class="btn-discord"><i class="fab fa-discord"></i> Discord ile Giriş</button>
+            </div>
+        `;
+    }
+
+    function showUnauthorized() {
+        document.getElementById('mainContent').innerHTML = `
+            <div class="login-panel">
+                <i class="fas fa-ban" style="font-size:3rem; color:#ef4444;"></i>
+                <h2>Erişim Engellendi</h2>
+                <p>Bu sunucunun üyesi değilsiniz veya izin verilen listede yoksunuz.</p>
+                <button onclick="logout()" class="btn-discord">Tekrar Dene</button>
+            </div>
+        `;
+    }
+
+    // ------------------- BAŞLAT -------------------
+    function init() {
+        getDiscordUser(user => {
+            if (!user) {
+                showLoginScreen();
+                return;
+            }
+            if (!ALLOWED_USER_IDS.includes(user.id)) {
+                showUnauthorized();
+                return;
+            }
+            document.getElementById('userStatus').innerHTML = `<i class="fab fa-discord"></i> ${escapeHtml(user.username)}#${user.discriminator}`;
+            showVotingPanel(user);
+        });
+    }
+
+    function escapeHtml(str) {
+        if (!str) return "";
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    init();
+</script>
+</body>
+</html>
